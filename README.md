@@ -163,7 +163,7 @@ gcc -o client tcp_client.c utils.c
 Open a terminal and run: 
 
 ```shell
-./server
+./server <initial temperature>
 ```
 
 Open four terminals and in each one run: 
@@ -190,7 +190,16 @@ Open four terminals and in each one run:
 ./client 4 400
 ```
 
-![sample_run](sample_run.jpg)
+![sample_run](TempProof.png)
+
+
+#### Website version
+```shell
+1. Open up the Temperature Stabilization Website
+2. Input the initial temperature values for each external client and the central server
+3. As the simulation runs, it'll update the temperature below the clients and server and what iteration number it's at.
+*Note* This simulation will display the same values as the terminal version
+```
 
 
 

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Temperature Stabilization System</title>
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#eef1f4; --panel:#ffffff; --ink:#14202b; --muted:#5b6b7a; --line:#c4cdd6;
+  --device:#2b3a48; --screen:#dfe8ef; --led:#2fbf71; --accent:#0f6f8f; --field:#f6f8fa;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#10161c; --panel:#18212a; --ink:#e6edf3; --muted:#93a4b3; --line:#33424f;
+    --device:#aebdca; --screen:#26333f; --led:#43d68a; --accent:#52b8d8; --field:#1f2a34;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10161c; --panel:#18212a; --ink:#e6edf3; --muted:#93a4b3; --line:#33424f;
+  --device:#aebdca; --screen:#26333f; --led:#43d68a; --accent:#52b8d8; --field:#1f2a34;
+  color-scheme:dark;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Avenir Next","Segoe UI",system-ui,sans-serif}
+main{max-width:980px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:1.5rem;margin:0 0 4px;letter-spacing:-.01em}
+.sub{margin:0 0 18px;color:var(--muted);max-width:62ch}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:12px}
+label{display:flex;flex-direction:column;font-size:.85rem;color:var(--muted);gap:3px}
+input[type=number]{font:inherit;color:var(--ink);background:var(--field);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%}
+.buttons{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center}
+button{font:inherit;font-weight:600;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:7px 14px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:disabled{opacity:.45;cursor:default}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.status{margin-left:auto;font-weight:600}
+.status.done{color:var(--led)}
+svg{display:block;width:100%;height:auto}
+.node-label{font-size:13px;font-weight:600;fill:var(--ink);text-anchor:middle}
+.temp{font-size:16px;font-weight:700;fill:#fff;text-anchor:middle;font-variant-numeric:tabular-nums}
+.link{stroke:var(--line);stroke-width:2;stroke-dasharray:5 5}
+.packet{stroke:var(--panel);stroke-width:2}
+.table-wrap{overflow-x:auto;max-height:300px;overflow-y:auto;margin-top:12px}
+table{border-collapse:collapse;width:100%;font-size:.88rem;font-variant-numeric:tabular-nums}
+th,td{text-align:right;padding:5px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{position:sticky;top:0;background:var(--panel);color:var(--muted);font-weight:600}
+th:first-child,td:first-child{text-align:left}
+.legend{display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--muted);margin-top:8px}
+.bar{flex:0 0 140px;height:8px;border-radius:4px;background:linear-gradient(90deg,hsl(215,70%,45%),hsl(110,55%,42%),hsl(10,75%,48%))}
+</style>
+</head>
+<body>
+<main>
+<h1>Temperature stabilization</h1>
+<p class="sub">One central server and four external computers exchange temperatures each round until no external changes by more than 0.001. Change the starting values, then step through or run it.</p>
+
+<div class="panel">
+  <div class="controls">
+    <label>Server<input type="number" id="c0" value="500"></label>
+    <label>Client 1<input type="number" id="e1" value="100"></label>
+    <label>Client 2<input type="number" id="e2" value="200"></label>
+    <label>Client 3<input type="number" id="e3" value="300"></label>
+    <label>Client 4<input type="number" id="e4" value="400"></label>
+  </div>
+  <div class="buttons">
+    <button class="primary" id="run">Run</button>
+    <button id="step">Step</button>
+    <button id="reset">Reset</button>
+    <span class="status" id="status" role="status" aria-live="polite"></span>
+  </div>
+
+  <svg viewBox="0 0 640 420" id="stage" role="img" aria-label="Diagram of the central server connected to four client computers, each showing its current temperature"></svg>
+  <div class="legend"><span>cooler</span><span class="bar"></span><span>hotter</span></div>
+</div>
+
+<div class="panel" style="margin-top:14px">
+  <strong>Iterations</strong>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Round</th><th>Client 1</th><th>Client 2</th><th>Client 3</th><th>Client 4</th><th>Server (after)</th></tr></thead>
+      <tbody id="log"></tbody>
+    </table>
+  </div>
+</div>
+</main>
+
+<script>
+(function(){
+  var NS = "http://www.w3.org/2000/svg";
+  var POS = [[320,215],[95,85],[545,85],[95,345],[545,345]]; // 0 = server, 1-4 = clients
+  var stage = document.getElementById("stage");
+  var logEl = document.getElementById("log");
+  var statusEl = document.getElementById("status");
+  var runBtn = document.getElementById("run");
+  var stepBtn = document.getElementById("step");
+  var state, running = false, busy = false, lo = 0, hi = 1;
+  var tempEls = [], rectEls = [], packetLayer;
+
+  function el(name, attrs, parent){
+    var n = document.createElementNS(NS, name);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  function colorFor(t){
+    var f = hi === lo ? 0.5 : Math.min(1, Math.max(0, (t - lo) / (hi - lo)));
+    return "hsl(" + Math.round(215 - 205 * f) + "," + Math.round(65 + 10 * f) + "%," + Math.round(42 + 5 * f) + "%)";
+  }
+  function fmt(t){ return t.toFixed(3); }
+
+  function drawComputer(g){
+    el("rect",{x:-30,y:-42,width:60,height:42,rx:5,fill:"var(--device)"},g);
+    el("rect",{x:-25,y:-37,width:50,height:32,rx:2,fill:"var(--screen)"},g);
+    el("rect",{x:-5,y:0,width:10,height:9,fill:"var(--device)"},g);
+    el("rect",{x:-20,y:9,width:40,height:5,rx:2,fill:"var(--device)"},g);
+  }
+  function drawServer(g){
+    for (var i = 0; i < 3; i++){
+      var y = -54 + i * 22;
+      el("rect",{x:-38,y:y,width:76,height:18,rx:3,fill:"var(--device)"},g);
+      el("rect",{x:-30,y:y+6,width:34,height:6,rx:1,fill:"var(--screen)"},g);
+      el("circle",{cx:22,cy:y+9,r:3,fill:"var(--led)"},g);
+      el("circle",{cx:31,cy:y+9,r:3,fill:"var(--led)"},g);
+    }
+  }
+
+  function build(){
+    stage.innerHTML = "";
+    for (var i = 1; i < 5; i++)
+      el("line",{x1:POS[0][0],y1:POS[0][1],x2:POS[i][0],y2:POS[i][1],"class":"link"},stage);
+    packetLayer = el("g",{},stage);
+    tempEls = []; rectEls = [];
+    for (var n = 0; n < 5; n++){
+      var g = el("g",{transform:"translate(" + POS[n][0] + "," + POS[n][1] + ")"},stage);
+      if (n === 0) drawServer(g); else drawComputer(g);
+      var ly = n === 0 ? 84 : 36;
+      var ty = n === 0 ? 92 : 44;
+      var rect = el("rect",{x:-42,y:ty,width:84,height:26,rx:13},g);
+      var tx = el("text",{"class":"temp",y:ty + 18},g);
+      var lb = el("text",{"class":"node-label",y:ty + 46},g);
+      lb.textContent = n === 0 ? "Central server" : "Client " + n;
+      rectEls.push(rect); tempEls.push(tx);
+    }
+  }
+
+  function paint(){
+    var vals = [state.c].concat(state.e);
+    for (var n = 0; n < 5; n++){
+      tempEls[n].textContent = fmt(vals[n]);
+      rectEls[n].setAttribute("fill", colorFor(vals[n]));
+    }
+  }
+
+  function reset(){
+    running = false; busy = false;
+    runBtn.textContent = "Run"; runBtn.disabled = false; stepBtn.disabled = false;
+    var c = parseFloat(document.getElementById("c0").value) || 0;
+    var e = [1,2,3,4].map(function(i){ return parseFloat(document.getElementById("e" + i).value) || 0; });
+    var all = e.concat([c]);
+    lo = Math.min.apply(null, all); hi = Math.max.apply(null, all);
+    state = {c:c, e:e, prev:null, iter:0, done:false};
+    logEl.innerHTML = "";
+    statusEl.textContent = "Ready"; statusEl.className = "status";
+    build(); paint();
+  }
+
+  function fly(fromIdx, toIdx, colors){
+    return new Promise(function(resolve){
+      var dot = el("circle",{r:7,"class":"packet",fill:colors},packetLayer);
+      var a = POS[fromIdx], b = POS[toIdx], t0 = null, dur = 380;
+      function frame(ts){
+        if (t0 === null) t0 = ts;
+        var p = Math.min(1, (ts - t0) / dur);
+        dot.setAttribute("cx", a[0] + (b[0] - a[0]) * p);
+        dot.setAttribute("cy", a[1] + (b[1] - a[1]) * p);
+        if (p < 1) requestAnimationFrame(frame);
+        else { packetLayer.removeChild(dot); resolve(); }
+      }
+      requestAnimationFrame(frame);
+    });
+  }
+
+  function flyAll(toServer){
+    var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) return Promise.resolve();
+    var vals = state.e, jobs = [];
+    for (var i = 1; i < 5; i++)
+      jobs.push(toServer ? fly(i, 0, colorFor(vals[i - 1])) : fly(0, i, colorFor(state.c)));
+    return Promise.all(jobs);
+  }
+
+  function addRow(round, e, c, note){
+    var tr = document.createElement("tr");
+    var cells = [note || String(round)].concat(e.map(fmt), [fmt(c)]);
+    cells.forEach(function(t){ var td = document.createElement("td"); td.textContent = t; tr.appendChild(td); });
+    logEl.appendChild(tr);
+    logEl.parentNode.scrollTop = logEl.parentNode.scrollHeight;
+  }
+
+  async function step(){
+    if (busy || state.done) return;
+    busy = true; stepBtn.disabled = true;
+    state.iter++;
+    statusEl.textContent = "Round " + state.iter + ": clients send";
+    await flyAll(true);
+
+    var recv = state.e.slice();
+    var stable = state.prev !== null && recv.every(function(t, i){ return Math.abs(t - state.prev[i]) <= 0.001; });
+
+    if (stable){
+      state.done = true;
+      state.e = state.e.map(function(){ return state.c; });
+      paint();
+      addRow(state.iter, recv, state.c, "Round " + state.iter + " (stable)");
+      statusEl.textContent = "Stable at " + fmt(state.c) + " after " + state.iter + " rounds";
+      statusEl.className = "status done";
+      running = false; runBtn.textContent = "Run"; runBtn.disabled = true;
+    } else {
+      var sum = recv.reduce(function(a, b){ return a + b; }, 0);
+      state.prev = recv;
+      state.c = (2 * state.c + sum) / 6;
+      statusEl.textContent = "Round " + state.iter + ": server replies";
+      paint();
+      await flyAll(false);
+      state.e = recv.map(function(t){ return (3 * t + 2 * state.c) / 5; });
+      addRow(state.iter, recv, state.c);
+      paint();
+    }
+    busy = false; stepBtn.disabled = state.done;
+  }
+
+  async function loop(){
+    while (running && !state.done){
+      await step();
+      await new Promise(function(r){ setTimeout(r, 150); });
+    }
+  }
+
+  runBtn.addEventListener("click", function(){
+    if (state.done) return;
+    running = !running;
+    runBtn.textContent = running ? "Pause" : "Run";
+    if (running) loop();
+  });
+  stepBtn.addEventListener("click", function(){ if (!running) step(); });
+  document.getElementById("reset").addEventListener("click", reset);
+  ["c0","e1","e2","e3","e4"].forEach(function(id){
+    document.getElementById(id).addEventListener("change", reset);
+  });
+
+  reset();
+})();
+</script>
+</body>
+</html>

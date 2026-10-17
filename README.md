@@ -71,11 +71,7 @@ To run the server and client processes, open multiple terminal windows on the sa
 
 1. **Using the Docker app**. Run the CSE4001 container from the Docker app and open a terminal, i.e., use the option `Open in terminal` that is provided by the drown-down `Actions` menu. See figure below: 
 
-   ![image-20231101100027110](./image-20231101100027110.png) 
-
    Once the terminal is open, choose `Open in external terminal` and then run the `bash` shell by typing bash on the command line. See figure below: 
-
-   ![image-20231101100606409](./image-20231101100606409.png) 
 
 2. **Open multiple terminals from the command line**. To open another terminal on the same active container, type the following command on another terminal. In this case, the terminal will already start running `bash` shell.
 
@@ -84,8 +80,6 @@ docker exec -it cse4001 bash
 ```
 
 3. Go to the `/root/workspace/` directory and clone the sample code or create a directory where you will write your code for the assignment. You might have already cloned the repository. 
-
-   ![image-20231101101522145](./image-20231101101522145.png)
 
 ### Description
 
